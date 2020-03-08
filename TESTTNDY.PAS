@@ -1,8 +1,9 @@
  uses misc,textmode;
 
  const
- title          : string = 'TNDY / TLPT Test utility v0.4a (c) 2019-2020 by Jan Knipperts';
- footer         : string = 'Up/Down = select; +/- = adjust values; Tab = next window; ESC = quit to DOS';
+ title          : string = 'TNDY / TLPT Test utility v0.52 (c) 2019-2020 by Jan Knipperts';
+ footer         : string = 'F1 = Function test, ESC = quit to DOS';
+ footer1        : string = '';
  tandyFreq      = 3579545;
  tandyDivider   = tandyFreq/32;
  tandyIntDivider= round(tandyDivider);
@@ -34,7 +35,9 @@
     key          : char;
     t1,t2,t3     : square_generator;
     t4           : noise_generator;
-    s            : string;
+    s,
+    fbutton,
+    mbutton      : string;
     tandyport    : word;
     data,
     status,
@@ -45,13 +48,31 @@
 Procedure Button(x,y : byte; name : string; pressed : boolean);
  var col,c : byte;
 begin
-  if pressed then col := 1 else col := 0;
-  fastwrite(x,y,0,7,name);
-  c := 1;
-  while (name[c] = ' ') and (c <= length(name)) do inc(c);
-  putchar(x+(c-1),y,name[c],4,7);
-  for c := x+1 to x+length(name) do fastwrite(c,y+1,col,1, 'ß');
-  fastwrite(x+length(name),y,col,1, 'Ü');
+  if vidseg = $B800 then
+  begin
+    if pressed then col := 1 else col := 0;
+
+    fastwrite(x,y,0,7,name);
+    c := 1;
+    while (name[c] = ' ') and (c <= length(name)) do inc(c);
+    putchar(x+(c-1),y,name[c],4,7);
+
+    for c := x+1 to x+length(name) do fastwrite(c,y+1,col,1, 'ß');
+    fastwrite(x+length(name),y,col,1, 'Ü');
+  end
+  else
+  begin
+     fastwrite(x,y,0,7,name);
+     c := 1;
+     while (name[c] = ' ') and (c <= length(name)) do inc(c);
+     putchar(x+(c-1),y,name[c],0,0);
+     if pressed then
+     begin
+      for c := x to x+length(name) do AttrMDA(c,y,false,false,true);
+     end;
+
+  end;
+
 end;
 
 
@@ -122,6 +143,12 @@ end;
 
 Procedure MuteTandyLPT;
 begin
+ asm
+  mov dx,ctrl
+  mov al,00000100b        {set bit 2, reset}
+  out dx,al
+ end;
+ xdelay(150);
  LPT_Send($9F);
  LPT_Send($BF);
  LPT_Send($DF);
@@ -342,7 +369,9 @@ end;
  begin
     for c := x to x+(l-1) do
     begin
-      changeattr(c,y,14,4);
+      if VidSeg = $B800 then changeattr(c,y,atr(14,4,false))
+      else
+      AttrMDA(c,y,true,true,true);
     end;
  end;
 
@@ -351,7 +380,9 @@ end;
  begin
     for c := x to x+(l-1) do
     begin
-      changeattr(c,y,15,1);
+      if VidSeg = $B800 then changeattr(c,y,atr(15,1,false))
+      else
+      AttrMDA(c,y,false,false,false);
     end;
  end;
 
@@ -397,11 +428,86 @@ end;
   end;
  end;
 
+ Procedure Function_Test;
+ begin
+       mouse_hide;
+       move(ptr(vidseg,0)^,p^,4000);   {Move actual screen to buffer}
+       writeto(ptr(vidseg,0));     {write to video mem}
+       ShadowScreen;                  {makes the screen black and white}
+       window(10,3,70,22,14,1,true);
+       centeredtext(3,15,' SN76489 chip function test: ');
+       centeredtext(21,15,'Testing port: '+hexw(tandyport));
+
+       centeredtext(5,15,'1. Testing sound generators');
+       MuteTandy;
+       centeredtext(6,14,'Tone generator 1: Playing C-4 (262 Hz)');
+       tandySound(0,262,0);
+       xdelay(500);
+       MuteTandy;
+       centeredtext(7,14,'Tone generator 2: Playing D-4 (294 Hz)');
+       tandySound(1,294,0);
+       xdelay(500);
+       MuteTandy;
+       centeredtext(8,14,'Tone generator 3: Playing E-4 (330 Hz)');
+       tandySound(2,330,0);
+       xdelay(500);
+       MuteTandy;
+       centeredtext(10,15,'2. Testing noise generator');
+       centeredtext(11,14,'Playing white noise at 6991 Hz');
+
+       tandyNoised(0, 1, 0);
+       xdelay(500);
+       tandyNoised(0, 1, 15);
+       centeredtext(12,14,'Playing white noise at 3496 Hz');
+
+       tandyNoised(1, 1, 0);
+       xdelay(500);
+       tandyNoised(0, 1, 15);
+       centeredtext(13,14,'Playing white noise at 1748 Hz');
+
+       tandyNoised(2, 1, 0);
+       xdelay(500);
+       tandyNoised(0, 1, 15);
+       centeredtext(14,14,'Playing periodic noise at 6991 Hz');
+
+       tandyNoised(0, 0, 0);
+       xdelay(500);
+       MuteTandy;
+       centeredtext(15,14,'Playing periodic noise at 3496 Hz');
+
+       tandyNoised(1, 0, 0);
+       xdelay(500);
+       MuteTandy;
+       centeredtext(16,14,'Playing periodic noise at 1748 Hz');
+
+       tandyNoised(2, 0, 0);
+       xdelay(500);
+       MuteTandy;
+       centeredtext(18,15,'Press any key to continue...');
+       mouse_show;
+       while iskeypressed do getkey;
+
+       repeat
+       if keyboardmode = false then Mouse_Read;
+       until (iskeypressed = true) or
+                    (mouse.b = 1);
+       while iskeypressed do getkey;
+       key := #0;
+       mouse_hide;
+       ViewBuffer(p);               {show buffer}
+       mouse_show;
+ end;
+
 
 
 
  Procedure Control_Options;
  begin
+
+      if key = #59 then
+      begin
+       Function_Test;
+      end;
 
 
       if (keyboardmode = true) then
@@ -973,7 +1079,7 @@ end;
          (upcase(key) = 'M') then
      begin
         mouse_hide;
-        Button(51,18,'Mute all channels',true);
+        Button(51,18,mbutton,true);
         ViewBuffer(p);
 
         if not keyboardmode then
@@ -998,7 +1104,7 @@ end;
         DrawSelector(57,11,'OFF');
         if keyboardmode then xdelay(300);
         mouse_hide;
-        Button(51,18,'Mute all channels',false);
+        Button(51,18,mbutton,false);
         MarkOption(select);
         ViewBuffer(p);
         if not keyboardmode then mouse_show;
@@ -1012,7 +1118,7 @@ end;
         if adjust = 100 then
         begin
           mouse_hide;
-          Button(49,20,'Frequency fine tuning',true);
+          Button(49,20,fbutton,true);
           MarkOption(select);
           ViewBuffer(p);
           if not keyboardmode then mouse_show;
@@ -1024,7 +1130,7 @@ end;
         else
         begin
           mouse_hide;
-          Button(49,20,'Frequency fine tuning',false);
+          Button(49,20,fbutton,false);
           MarkOption(select);
           ViewBuffer(p);
           if not keyboardmode then mouse_show;
@@ -1033,6 +1139,9 @@ end;
           while iskeypressed do getkey;
           adjust := 100;
         end;
+
+
+
 
        end;
 
@@ -1074,8 +1183,6 @@ end;
 
 
 begin
- writeln(title);
- writeln('');
  lpt := false;
  tandyport := $0C0;
  win     := 1;
@@ -1091,30 +1198,135 @@ begin
  t4.ntype := 0;
  adjust   := 100;
 
+ VidSeg := Detect_VidSeg;
 
- if (mouse_init = false) or FindOption('/K') then
+ if FindOption('/MDA') then
  begin
-  writeln(' No mouse detected.');
-  keyboardmode := true;
+  VidSeg := $B000;
+ end;
+ if FindOption('/COLOR') then
+ begin
+  VidSeg := $B800;
+ end;
+
+ viewseg := VidSeg;
+ writeseg := viewseg;
+
+ if vidseg = $B800 then
+ begin
+  asm
+   xor ah,ah
+   mov al,3
+   int 10h
+  end;
  end
  else
  begin
-  writeln(' Mouse detected.');
+  asm
+   xor ah,ah
+   mov al,7
+   int 10h
+  end;
+ end;
+
+ writeln('Detecting hardware...');	
+
+ if FindOption('/?') or FindOption('?') then
+ begin
+  gotoxy(1,1);
+  writeln('                      ');
+  gotoxy(40-(length(title) div 2),1);
+  writeln(title);
+  writeln('');
+  writeln(' Possible comand line parameters: ');
+  writeln('');
+  writeln(' /K           - Disables mouse and forces keyboard control ');
+  writeln(' /MDA         - Forces mode for monochrome display adapters ');
+  writeln(' /COLOR       - Forces mode for color display adapters ');
+  writeln(' /TEST <Port> - Performs a quick soundcheck using the given port');
+  writeln('');
+  halt(0);
+ end;
+
+ if (mouse_init = false) or FindOption('/K') then
+ begin
+  keyboardmode := true;
+  fbutton := '(F)ine frequency tuning';
+  mbutton := '(M)ute all channels';
+ end
+ else
+ begin
   keyboardmode := false;
+  fbutton := 'Fine frequency tuning';
+  mbutton := 'Mute all channels';
  end;
- xdelay(200);
 
 
- asm
-  mov ax,03h
-  int 10h
- end;
  cursor(false);
  getmem(p,4000); {Alloc additional screen buffer}
  fillchar(p^,4000,0);
  writeto(p);
  InitMenuScreen(title);
- Centeredline(25,15,1,footer);
+ Centeredline(25,14,1,footer);
+
+ if FindOption('/TEST') then
+ begin
+  if FindOption('E0') or
+     FindOption('E0h') or
+     FindOption('0E0') or
+     FindOption('0E0h') then tandyport := $0E0;
+  if FindOption('1E0') or FindOption('1E0h') then tandyport := $1E0;
+  if FindOption('2C0') or FindOption('2C0h') then tandyport := $2C0;
+  if FindOption('2E0') or FindOption('2E0h') then tandyport := $2E0;
+  if FindOption('LPT1') then
+  begin
+    tandyport := 1;
+    if not init_PP(1) then
+    begin
+     clrscr;
+     writeto(ptr(viewseg,0));
+     freemem(p,4000);
+     cursor(true);
+     writeln('ERROR: Parallel port LPT1 not found!');
+     writeln('');
+     halt(1);
+    end;
+  end;
+  if FindOption('LPT2') then
+  begin
+    tandyport := 2;
+    if not init_PP(2) then
+    begin
+     clrscr;
+     writeto(ptr(viewseg,0));
+     freemem(p,4000);
+     cursor(true);
+     writeln('ERROR: Parallel port LPT2 not found!');
+     writeln('');
+     halt(1);
+    end;
+  end;
+ if FindOption('LPT3') then
+  begin
+    tandyport := 3;
+    if not init_PP(3) then
+    begin
+     clrscr;
+     writeto(ptr(viewseg,0));
+     freemem(p,4000);
+     cursor(true);
+     writeln('ERROR: Parallel port LPT3 not found!');
+     writeln('');
+     halt(1);
+   end;
+  end;
+  Mute;
+  Function_Test;
+  Mute;
+ end
+ else
+ begin
+
  Window(20,3,60,6,15,1,true);
  fastwrite(22,3,14,1,' Port for Tandy sound chip (SN76489) ');
  fastwrite(33,4,15,1,'Port:');
@@ -1152,8 +1364,8 @@ begin
  DrawSelector(57,12,'Periodic');
 
  Window(43,16,76,22,15,1,true);
- Button(51,18,'Mute all channels',false);
- Button(49,20,'Frequency fine tuning',false);
+ Button(51,18,mbutton,false);
+ Button(49,20,fbutton,false);
 
 
 
@@ -1179,7 +1391,7 @@ begin
     begin
       if iskeypressed then  key := getkey;
       while iskeypressed do getkey;
-      Control_options;
+       Control_options;
     end;
 
  until key = #27;
@@ -1187,7 +1399,9 @@ begin
  Mute;
  mouse_hide;
  clrscr;
- writeto(ptr(segB800,0));
+ writeto(ptr(viewseg,0));
+ end;
+
  freemem(p,4000);
  cursor(true);
  writeln(title);

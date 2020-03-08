@@ -1,11 +1,14 @@
 Unit Textmode;
-{Version 1.61 - 24.01.1997 by Jan Knipperts}
+{Diese Unit enth„lt ntzliche Proceduren zum Zeichnen von Mens im Textmodus}
+{Version 1.7 - 20.01.20 }
 
 interface
 uses dos;
 
-Function atr(fg,bg : byte; blink : boolean) : byte;
-Procedure ChangeAttr(x,y,fg,bg : byte);
+Function  Detect_VidSeg : word;
+Function  atr(fg,bg : byte; blink : boolean) : byte;
+Procedure AttrMDA(x,y : byte; underline,blink,bright : boolean);
+Procedure ChangeAttr(x,y,atrib : byte);
 Procedure Cursor(onoff : boolean);
 Procedure Window(xp,yp,xp1,yp1 : word; c,b : byte; shadow : boolean);
 Procedure Box(xp,yp,xp1,yp1 : word; foreground, background : byte; slim : boolean);
@@ -17,6 +20,7 @@ Function  GetChar(x,y: Byte): Char;
 Function  GetTextColor(x,y: Byte): Byte;
 Function  GetTextBackground(x,y: Byte): Byte;
 Procedure Fastwrite(x,y,fg, bg : byte; s : string);
+Procedure CenteredText(y,c : byte; s : string);
 Function  GetX : byte;
 Function  GetY : byte;
 Procedure GotoXy(x,y : byte);
@@ -54,26 +58,53 @@ var
  mouse          : mousedata;
  mouse_there    : boolean;
  page,tc,tbc    : byte;
- writeseg       : word;
+ writeseg,
+ viewseg,
+ vidseg          : word;
+
 
 implementation
+
+Function Detect_VidSeg : word;
+begin
+ if Mem[$0000:$0449] = 7 then Detect_VidSeg := $B000
+ else Detect_VidSeg := $B800;
+end;
 
 
 Function atr(fg,bg : byte; blink : boolean) :byte;
 var a : byte;
 begin
- a := fg or (bg shl 4);
- if not blink then a := a and not (1 shl 7);
+ if VidSeg = $B800 then {Color display}
+ begin
+  a := fg or (bg shl 4);
+  if not blink then a := a and not (1 shl 7);
+ end
+ else
+ begin
+   a := 7;
+ end;
  atr := a;
 end;
 
 
-Procedure ChangeAttr(x,y,fg,bg : byte);
+Procedure ChangeAttr(x,y,atrib : byte);
 begin
   if x > 0 then x := x-1;
   if y > 0 then y := y-1;
-  mem[writeseg:(((y*80)+x) shl 1)+1]:=atr(fg,bg,false);
+  mem[writeseg:(((y*80)+x) shl 1)+1]:=atrib;
 end;
+
+Procedure AttrMDA(x,y : byte; underline,blink,bright : boolean);
+var a : byte;
+begin
+   a := 7;
+   if underline then a := $F;
+   if bright then a := a or (1 shl 3);
+   if blink then a := a or (1 shl 7);
+   ChangeAttr(x,y,a);
+end;
+
 
 
 Procedure PutChar(x,y: Byte; ch: Char; fg, bg : byte);
@@ -81,14 +112,13 @@ begin
   if x > 0 then x := x-1;
   if y > 0 then y := y-1;
   mem[writeseg:(((y*80)+x) shl 1)]:=Byte(ch);
-  mem[writeseg:(((y*80)+x) shl 1)+1]:=atr(fg,bg,false);
+  mem[writeseg:(((y*80)+x) shl 1)+1]:=atr(fg,bg,false)
 end;
 
 Function GetChar(x,y: Byte): Char;
 begin
   if x > 0 then x := x-1;
   if y > 0 then y := y-1;
-
   GetChar:=Char(mem[writeseg:((y*80)+x) shl 1]);
 end;
 
@@ -141,6 +171,10 @@ begin
  end;
 end;
 
+Procedure CenteredText(y,c : byte; s : string);
+begin
+ fastwrite(40-(length(s) div 2),y,c,1,s);
+end;
 
 Procedure Box(xp,yp,xp1,yp1 : word; foreground, background : byte; slim : boolean);
 var xc,yc : word;
@@ -536,7 +570,7 @@ end;
 
  Procedure ViewBuffer(p : pointer);
  begin
-  move(p^,ptr(segB800,0)^,4000);
+  move(p^,ptr(viewseg,0)^,4000);
  end;
 
  Procedure ShadowScreen;
@@ -560,7 +594,10 @@ begin
  mouse_there := mouse_detected;
  tc := 7;
  tbc := 0;
- writeseg := SegB800;
+
+ VidSeg := Detect_VidSeg;
+ viewseg := VidSeg;
+ writeseg := viewseg;
 
 end.
 
