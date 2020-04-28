@@ -1,8 +1,8 @@
  uses misc,textmode;
 
  const
- title          : string = 'TNDY / TLPT Test utility v0.52 (c) 2019-2020 by Jan Knipperts';
- footer         : string = 'F1 = Function test, ESC = quit to DOS';
+ title          : string = 'TNDY / TNDLPT Test utility v0.6 (c) 2019-2020 by Jan Knipperts';
+ footer         : string = 'F1 = Function Test, F2 = Play Melody, ESC = quit to DOS';
  footer1        : string = '';
  tandyFreq      = 3579545;
  tandyDivider   = tandyFreq/32;
@@ -10,6 +10,23 @@
  minfreq        = 110;
  maxfreq        = 11000;
  delayval       = 80;
+  {-------------------------------------------------------------------}
+  {Note frequencies}
+  R = 0;                            {Rest = frequency of 0 : silence}
+  C = 260;                          {Frequency of middle c          }
+  CC = 277;                         {Double letter indicates a sharp}
+  D = 294;
+  DD = 311;
+  E = 330;
+  F = 349;
+  FF = 370;
+  G = 392;
+  GG = 415;
+  A = 440;
+  AA = 466;
+  B = 494;
+
+
 
 
  type
@@ -80,7 +97,7 @@ end;
 
 Procedure LPT_Send(b : byte);
 assembler;
-asm
+ asm
   mov al,b
   mov dx,data
   out dx,al
@@ -108,7 +125,6 @@ asm
   mov al,9
   out dx,al
 end;
-
 
 procedure tandyLPTSound(voice:byte; tone:word; level:byte);
 begin
@@ -143,12 +159,6 @@ end;
 
 Procedure MuteTandyLPT;
 begin
- asm
-  mov dx,ctrl
-  mov al,00000100b        {set bit 2, reset}
-  out dx,al
- end;
- xdelay(150);
  LPT_Send($9F);
  LPT_Send($BF);
  LPT_Send($DF);
@@ -169,7 +179,27 @@ assembler;
   out dx,al
  end;
 
-
+Procedure MuteVoice(voice : byte);
+begin
+if LPT then
+begin
+ case voice of
+  0: LPT_Send($9F);
+  1: LPT_Send($BF);
+  2: LPT_Send($DF);
+  3: LPT_Send($FF);
+ end;
+end
+else
+begin
+ case voice of
+  0: port[TandyPort] := $9F;
+  1: port[TandyPort] := $BF;
+  2: port[TandyPort] := $DF;
+  3: port[TandyPort] := $FF;
+ end;
+end;
+end;
 
 
 
@@ -191,6 +221,13 @@ begin
   lpt := true;
   status := data + 1;
   ctrl := data + 2;
+
+  asm                      {Unlock new version o LPT plug}
+  mov dx,ctrl
+  mov al,$E5
+  out dx,al
+  end;
+  xdelay(150);
  end;
 
  Init_PP := lpt;
@@ -224,7 +261,7 @@ asm
 end;
 end;
 
-procedure tandyNoised(divider, feedback, level:byte); assembler;
+procedure tandyNoise(divider, feedback, level:byte); assembler;
 asm
         mov  ax,bx
 
@@ -246,9 +283,17 @@ asm
 	out  dx,al
 end;
 
+Procedure PlaySound(voice:byte; tone:word; level:byte);
+begin
+  if lpt then
+   tandyLPTSound(voice,tone,level)
+  else
+   tandySound(voice,tone,level);
+  end;
 
 
-Procedure PlaySquarewave;
+
+Procedure PlaySquarewaves;
 begin
   if lpt then
   begin
@@ -309,9 +354,22 @@ begin
   end
   else
   begin
-   tandyNoised(t4.freq,t4.ntype,t4.vol);
+   tandyNoise(t4.freq,t4.ntype,t4.vol);
   end;
 end;
+
+Procedure Noise(divider, feedback, level:byte);
+begin
+  if lpt then
+  begin
+   tandyLPTNoise(divider, feedback, level);
+  end
+  else
+  begin
+   tandyNoise(divider, feedback, level);
+  end;
+end;
+
 
 
 Procedure Mute;
@@ -324,7 +382,7 @@ begin
  else
  begin
    MuteTandy;
-   tandyNoised(0,0,15);
+   tandyNoise(0,0,15);
  end;
 end;
 
@@ -436,54 +494,127 @@ end;
        ShadowScreen;                  {makes the screen black and white}
        window(10,3,70,22,14,1,true);
        centeredtext(3,15,' SN76489 chip function test: ');
-       centeredtext(21,15,'Testing port: '+hexw(tandyport));
-
+       if tandyport > 3 then
+       begin
+         centeredtext(21,15,'Selected port: '+hexw(tandyport)+'h');
+       end
+       else
+       begin
+         case tandyport of
+         1: centeredtext(21,15,'Selected port: LPT1');
+         2: centeredtext(21,15,'Selected port: LPT1');
+         3: centeredtext(21,15,'Selected port: LPT1');
+         end;
+       end;
        centeredtext(5,15,'1. Testing sound generators');
-       MuteTandy;
-       centeredtext(6,14,'Tone generator 1: Playing C-4 (262 Hz)');
-       tandySound(0,262,0);
+       InitTandySound;
+       Mute;
+       centeredtext(6,14,'Tone generator 1: Playing C-4 (1040 Hz)');
+       PlaySound(0,C*4,0);
        xdelay(500);
-       MuteTandy;
-       centeredtext(7,14,'Tone generator 2: Playing D-4 (294 Hz)');
-       tandySound(1,294,0);
+       MuteVoice(0);
+       fastwrite(47,6,14,1,'D-4 (1176 Hz)');
+       PlaySound(0,D*4,0);
        xdelay(500);
-       MuteTandy;
-       centeredtext(8,14,'Tone generator 3: Playing E-4 (330 Hz)');
-       tandySound(2,330,0);
+       MuteVoice(0);
+       fastwrite(47,6,14,1,'E-4 (1320 Hz)');
+       PlaySound(0,E*4,0);
        xdelay(500);
-       MuteTandy;
-       centeredtext(10,15,'2. Testing noise generator');
-       centeredtext(11,14,'Playing white noise at 6991 Hz');
+       MuteVoice(0);
+       fastwrite(47,6,14,1,'F-4 (1396 Hz)');
+       PlaySound(0,F*4,0);
+       xdelay(500);
+       MuteVoice(0);
+       fastwrite(38,6,14,1,' OFF                   ');
 
-       tandyNoised(0, 1, 0);
-       xdelay(500);
-       tandyNoised(0, 1, 15);
-       centeredtext(12,14,'Playing white noise at 3496 Hz');
 
-       tandyNoised(1, 1, 0);
+       centeredtext(7,14,'Tone generator 2: Playing C-3 (780 Hz)');
+       PlaySound(1,C*3,0);
        xdelay(500);
-       tandyNoised(0, 1, 15);
-       centeredtext(13,14,'Playing white noise at 1748 Hz');
+       MuteVoice(1);
+       fastwrite(47,7,14,1,'D-3 (882 Hz)');
+       PlaySound(1,D*3,0);
+       xdelay(500);
+       MuteVoice(1);
+       fastwrite(47,7,14,1,'E-3 (990 Hz)');
+       PlaySound(1,E*3,0);
+       xdelay(500);
+       MuteVoice(1);
+       fastwrite(47,7,14,1,'F-3 (1047 Hz)');
+       PlaySound(1,F*3,0);
+       xdelay(500);
+       MuteVoice(1);
+       fastwrite(38,7,14,1,' OFF                   ');
 
-       tandyNoised(2, 1, 0);
-       xdelay(500);
-       tandyNoised(0, 1, 15);
-       centeredtext(14,14,'Playing periodic noise at 6991 Hz');
 
-       tandyNoised(0, 0, 0);
+       centeredtext(8,14,'Tone generator 3: Playing C-2 (330 Hz)');
+       PlaySound(2,C*2,0);
        xdelay(500);
-       MuteTandy;
-       centeredtext(15,14,'Playing periodic noise at 3496 Hz');
+       MuteVoice(2);
+       fastwrite(47,8,14,1,'D-2 (520 Hz)');
+       PlaySound(2,D*2,0);
+       xdelay(500);
+       MuteVoice(2);
+       fastwrite(47,8,14,1,'E-2 (588 Hz)');
+       PlaySound(2,E*2,0);
+       xdelay(500);
+       MuteVoice(2);
+       fastwrite(47,8,14,1,'F-2 (698 Hz)');
+       PlaySound(2,F*2,0);
+       xdelay(500);
+       MuteVoice(2);
+       fastwrite(38,8,14,1,' OFF                   ');
+       xdelay(600);
 
-       tandyNoised(1, 0, 0);
+ {      centeredtext(9,14,'Poyphony test (playig a C in different octaves)');}
+       PlaySound(0,C*3,0);
+       fastwrite(38,6,14,1,' Playing C-3 (294 Hz)');
        xdelay(500);
-       MuteTandy;
-       centeredtext(16,14,'Playing periodic noise at 1748 Hz');
+       PlaySound(1,C*4,0);
+       fastwrite(38,7,14,1,' Playing C-4 (1040 Hz)');
+       xdelay(500);
+       PlaySound(2,C*5,0);
+       fastwrite(38,8,14,1,' Playing C-5 (1300 Hz)');
+       xdelay(1000);
+       Mute;
+       fastwrite(38,6,14,1,' OFF                   ');
+       fastwrite(38,7,14,1,' OFF                   ');
+       fastwrite(38,8,14,1,' OFF                   ');
 
-       tandyNoised(2, 0, 0);
+       centeredtext(11,15,'2. Testing noise generator');
+       Mute;
+
+       centeredtext(12,14,'Playing white noise at 6991 Hz');
+       Noise(0, 1, 0);
        xdelay(500);
-       MuteTandy;
-       centeredtext(18,15,'Press any key to continue...');
+       Noise(0, 1, 15);
+
+       fastwrite(48,12,14,1,'3496 Hz');
+       Noise(1, 1, 0);
+       xdelay(500);
+       Noise(1, 1, 15);
+
+       fastwrite(48,12,14,1,'1748 Hz');
+       Noise(2, 1, 0);
+       xdelay(500);
+       Noise(2, 1, 15);
+
+       centeredtext(12,14,'Playing periodic noise at 6991 Hz');
+       Noise(0, 0, 0);
+       xdelay(500);
+       Noise(0, 0, 15);
+
+       fastwrite(50,12,14,1,'3496 Hz');
+       Noise(1, 0, 0);
+       xdelay(500);
+       Noise(1, 0, 15);
+
+       fastwrite(50,12,14,1,'1748 Hz');
+       Noise(2, 0, 0);
+       xdelay(500);
+       Noise(2, 0, 15);
+
+       centeredtext(17,15,'Press any key to continue...');
        mouse_show;
        while iskeypressed do getkey;
 
@@ -492,13 +623,158 @@ end;
        until (iskeypressed = true) or
                     (mouse.b = 1);
        while iskeypressed do getkey;
+       Mute;
        key := #0;
        mouse_hide;
        ViewBuffer(p);               {show buffer}
-       mouse_show;
+       writeto(p);
+       if not keyboardmode then
+       begin
+        mouse_show;
+        mouse.b := 0;
+       end;
+       PlaySquarewaves;
+       PlayNoise;
+
  end;
 
 
+
+ Procedure Play_Melody;
+ const
+  BeatNote         = 4;             {Bottom number in Time Signature}
+                                    {Handles cut time (2/2), 6/8 etc.}
+  Tempo            = 160;           {Number of beats per minute}
+  Beat             = 60000/Tempo;   {Duration of 1 beat in millisecs}
+  {Note durations}
+  Q  = 1 * (BeatNote/4);                            {Quarter note}
+  I  = 0.5 * (BeatNote/4);                          {Eighth note}
+  H  = 2 * (BeatNote/4);                            {Half note}
+  W  = 4 * (BeatNote/4);                            {Whole note}
+  S  = 0.25 * (BeatNote/4);                         {Sixteenth note}
+  DQ = 1.5 * (BeatNote/4);                          {Dotted quarter}
+  DI = 0.75 * (BeatNote/4);                         {Dotted eighth}
+  DH = 3 * (BeatNote/4);                            {Dotted half}
+  DS = 0.375 * (BeatNote/4);                        {Dotted sixteenth}
+
+Type
+  IValues = Array [1..9] of Integer;
+  RValues = Array [1..9] of Real;
+  Phrase  = Record
+    Lyric  :  String;
+    Notes  : IValues;   {Array of note frequencies}
+    Octave : IValues;   {Array of note octaves}
+    Rhythm : RValues;   {Array of note durations}
+  end;
+  Song = Array [1..4] of Phrase;
+
+
+ {Sample song}
+Const
+  RowRow : Song = (
+    (Lyric : 'Row Row Row Your Boat';
+    NOTES   :  (C,C,C,D,E,R,0,0,0);
+    OCTAVE  :  (1,1,1,1,1,1,0,0,0);
+    RHYTHM  :  (DQ,DQ,Q,I,Q,I,R,0,0)
+    ),
+
+    (Lyric : 'Gently down the stream';
+    NOTES   :  (E,D,E,F,G,R,0,0,0);
+    OCTAVE  :  (1,1,1,1,1,1,0,0,0);
+    RHYTHM  :  (Q,I,Q,I,DQ,DQ,0,0,0)
+    ),
+
+    (Lyric : 'Merrily merrily merrily merrily';
+    NOTES :  (C,C,G,G,E,E,C,C,0  );
+    OCTAVE : (2,2,1,1,1,1,1,1,0  );
+    RHYTHM : (Q,I,Q,I,Q,I,Q,I,0  )
+    ),
+
+    (Lyric : 'Life is but a dream.';
+    NOTES  : (G,F,E,D,C,R,0,0,0  );
+    OCTAVE : (1,1,1,1,1,1,0,0,0  );
+    RHYTHM  : (Q,I,Q,I,H,Q,0,0,0  )
+    ));
+
+var
+   Voice : byte;
+
+
+Procedure PlayNote(note, oct : integer; duration : real);
+begin
+  if note > 0 then
+  PlaySound(voice,note * oct,0) else PlaySound(voice,note * oct,15);
+  xDelay(Round(beat * duration));
+  PlaySound(voice,note * oct,15);
+  xDelay(15);
+end;
+
+Procedure PlayPhrase(Notes, Octave : IValues; Rythm : RValues);
+Var
+  index : byte;
+  numberstr,voicestr : string;
+begin
+  For index := 1 to 9 do
+  begin
+    str(round(notes[index] * octave[index]), numberstr);
+    str(voice, voicestr);
+    centeredtext(15,14,'                                ');
+    centeredtext(15,14,'Playing tone generator '+voicestr+': '+numberstr+' Hz');
+    PlayNote(notes[index], octave[index], rythm[index]);
+  end;
+end;
+
+Procedure PlaySong(Title : String; Tune : Song);
+Var
+  PhraseCounter : byte;
+begin
+  Voice := 0;
+  For PhraseCounter := 1 to 4 do
+  begin
+    centeredtext(8+PhraseCounter,15,Tune[PhraseCounter].Lyric);
+    PlayPhrase(Tune[PhraseCounter].Notes,
+               Tune[PhraseCounter].Octave, Tune[PhraseCounter].Rhythm);
+    inc(Voice);
+    if Voice = 3 then Voice := 0;
+  end;
+
+end;
+
+begin
+  mouse_hide;
+  move(ptr(vidseg,0)^,p^,4000);   {Move actual screen to buffer}
+  writeto(ptr(vidseg,0));     {write to video mem}
+  ShadowScreen;                  {makes the screen black and white}
+  window(10,3,70,22,14,1,true);
+  centeredtext(3,15,' SN76489 chip function test 2: ');
+  centeredtext(5,14,'You should now hear the melody of');
+  centeredtext(6,14,'"Row, Row, Row Your Boat"');
+  centeredtext(7,14,'played on the different tone generators.');
+  InitTandySound;
+  Mute;
+  PlaySong('"Row Row Row Your Boat "', RowRow);
+  Mute;
+  centeredtext(18,15,'Press any key to continue...');
+  mouse_show;
+
+  while iskeypressed do getkey;
+  repeat
+       if keyboardmode = false then Mouse_Read;
+  until (iskeypressed = true) or  (mouse.b = 1);
+  while iskeypressed do getkey;
+  key := #0;
+  mouse_hide;
+  ViewBuffer(p);               {show buffer}
+  writeto(p);
+  if not keyboardmode then
+  begin
+    mouse_show;
+    mouse.b := 0;
+  end;
+  PlaySquarewaves;
+  PlayNoise;
+
+end;
 
 
  Procedure Control_Options;
@@ -509,6 +785,10 @@ end;
        Function_Test;
       end;
 
+      if key = #60 then
+      begin
+       Play_Melody;
+      end;
 
       if (keyboardmode = true) then
       begin
@@ -657,7 +937,7 @@ end;
        ViewBuffer(p);
        if not keyboardmode then mouse_show;
        InitTandySound;
-       PlaySquarewave;
+       PlaySquarewaves;
 
       end;
 
@@ -726,7 +1006,7 @@ end;
        ViewBuffer(p);
        if not keyboardmode then mouse_show;
        InitTandySound;
-       PlaySquarewave;
+       PlaySquarewaves;
 
       end;
 
@@ -753,7 +1033,7 @@ end;
          mouse_show;
          xdelay(delayval);
         end;
-        PlaySquarewave;
+        PlaySquarewaves;
       end;
 
       if ((mouse.b = 1) and ((xp = 31 ) and (yp = 11)) or
@@ -781,7 +1061,7 @@ end;
          mouse_show;
          xdelay(delayval);
         end;
-        PlaySquarewave;
+        PlaySquarewaves;
       end;
 
       {TG1 vol}
@@ -797,7 +1077,7 @@ end;
         MarkOption(select);
         ViewBuffer(p);
         if not keyboardmode then mouse_show;
-        PlaySquarewave;
+        PlaySquarewaves;
         Wait_for_Mousebutton;
       end;
 
@@ -812,7 +1092,7 @@ end;
         MarkOption(select);
         ViewBuffer(p);
         if not keyboardmode then mouse_show;
-        PlaySquarewave;
+        PlaySquarewaves;
         Wait_for_Mousebutton;
       end;
 
@@ -834,7 +1114,7 @@ end;
          mouse_show;
          xdelay(delayval);
         end;
-        PlaySquarewave;
+        PlaySquarewaves;
       end;
 
       if ((mouse.b = 1) and ((xp = 31 ) and (yp = 15)) or
@@ -862,7 +1142,7 @@ end;
          mouse_show;
          xdelay(delayval);
         end;
-        PlaySquarewave;
+        PlaySquarewaves;
       end;
 
       {TG2 vol}
@@ -878,7 +1158,7 @@ end;
         MarkOption(select);
         ViewBuffer(p);
         if not keyboardmode then mouse_show;;
-        PlaySquarewave;
+        PlaySquarewaves;
         Wait_for_Mousebutton;
       end;
 
@@ -893,7 +1173,7 @@ end;
         MarkOption(select);
         ViewBuffer(p);
         if not keyboardmode then mouse_show;;
-        PlaySquarewave;
+        PlaySquarewaves;
         Wait_for_Mousebutton;
       end;
 
@@ -916,7 +1196,7 @@ end;
          mouse_show;
          xdelay(delayval);
         end;
-        PlaySquarewave;
+        PlaySquarewaves;
       end;
 
       if ((mouse.b = 1) and ((xp = 31 ) and (yp = 19)) or
@@ -945,7 +1225,7 @@ end;
          mouse_show;
          xdelay(delayval);
         end;
-        PlaySquarewave;
+        PlaySquarewaves;
       end;
 
       {TG3 vol}
@@ -961,7 +1241,7 @@ end;
         MarkOption(select);
         ViewBuffer(p);
         if not keyboardmode then mouse_show;
-        PlaySquarewave;
+        PlaySquarewaves;
         Wait_for_Mousebutton;
       end;
 
@@ -976,7 +1256,7 @@ end;
         MarkOption(select);
         ViewBuffer(p);
         if not keyboardmode then mouse_show;;
-        PlaySquarewave;
+        PlaySquarewaves;
         Wait_for_Mousebutton;
       end;
 
@@ -1229,7 +1509,7 @@ begin
   end;
  end;
 
- writeln('Detecting hardware...');	
+ writeln('Please wait...');
 
  if FindOption('/?') or FindOption('?') then
  begin
@@ -1405,7 +1685,7 @@ begin
  freemem(p,4000);
  cursor(true);
  writeln(title);
- writeln('Greetings to Matze79 and PeDeWacht');
+ writeln('Greetings to Matze, Serge and Peter');
  writeln('');
 end.
 
